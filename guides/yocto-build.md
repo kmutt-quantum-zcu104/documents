@@ -86,8 +86,8 @@ source ./edf-init-build-env
 ```
 nano ~/yocto-zcu104/build/conf/local.conf
 ```
-at top of file you will see comment ```#MACHINE = ""```
-so uncomment it and comment ```#MACHINE= ``` instead.
+at top of file you will see comment ```#MACHINE = "zynqmp-zcu104-sdt-full"```
+so uncomment it and comment ```MACHINE ??= "qemuarm64"``` instead.
 save and exit
 
 ### Test parsing
