@@ -2,9 +2,11 @@
 
 Our team uses Git and GitHub to coordinate, manage, and track the development of both hardware (RTL) and software across the KMUTT Quantum Hardware Testbed.
 
-Hardware projects and embedded firmware have their own unique pitfalls. Some Git commands can be destructive or cause silent merge errors in Vivado projects and makefiles. Team members come with different backgrounds in software and electrical engineering, but everyone should be able to contribute cleanly and safely.
+Hardware projects and embedded firmware generate files that are easy to commit accidentally, and source changes can conflict when people work in parallel. Team members come with different backgrounds in software and electrical engineering, but everyone should be able to contribute cleanly and safely.
 
 It is therefore important that we share an understanding of how these tools are used, so we can build together without stepping on each other's toes.
+
+This guide recommends a lightweight workflow. It does not establish organization-wide branch naming, merge policies, or GitHub protection settings; confirm repository-specific requirements before relying on them.
 
 ## Required knowledge
 
@@ -18,15 +20,15 @@ Reading at least the first three chapters, through the end of "Git Branching," i
 
 Git and GitHub are not the same thing. Git is the underlying version control tool; GitHub provides collaboration workflows such as issues and pull requests.
 
-We do not push directly to production branches. Instead, we use branches and pull requests to review each other's changes.
+[GitHub Flow](https://docs.github.com/en/get-started/using-github/github-flow) introduces the branch-and-pull-request workflow used in the examples below.
 
 ### Command-line interface
 
-The rest of this guide uses the `git` command-line interface. Learning the CLI will help you understand what is actually happening under the hood, and it works identically on your laptop, a remote build server, or the ZCU104 board itself.
+The rest of this guide uses the `git` command-line interface. Basic familiarity with the shell will help you follow it; these commands can also help explain what a graphical Git client is doing.
 
 ## Required setup
 
-Before writing code, configure Git with your identity and standard settings to prevent confusing errors down the road.
+Before committing, configure Git with your identity and review the settings below. Examples using `--global` affect all repositories for your account on that machine. If you need a repository-specific setting instead, use `--local` from inside that repository.
 
 ### Commit name and email address
 
@@ -37,9 +39,10 @@ git config --global user.name 'Your Name'
 git config --global user.email 'your_email@example.com'
 ```
 
-### Essential Git settings
+### Suggested Git settings
 
-Run all of the commands below on your machine:
+These settings support the examples below. Review them before changing an existing setup:
+
 ```sh
 # Make the default branch name in a new repository 'main'
 git config --global init.defaultBranch main
@@ -50,7 +53,7 @@ git config --global push.default simple
 # Automatically set up tracking when pushing a new branch
 git config --global push.autoSetupRemote true
 
-# Use fast-forward or standard merge to resolve conflicts during pull
+# Use fast-forward when possible, otherwise merge during a plain git pull
 git config --global pull.ff true
 git config --global pull.rebase false
 
@@ -62,30 +65,34 @@ git config --global core.autocrlf false
 
 If you work on Windows, editors and tools often default to CRLF line endings, while Linux expects LF. When line endings get mixed up, Git diffs show entire files as modified, and shell scripts on the ZCU104 will fail with bizarre syntax errors.
 
-By default on Windows, Git sets `core.autocrlf` to `true`. This setting tries to convert LF to CRLF automatically, but in practice it frequently breaks scripts, Tcl files, and Linux source code.
+Some Git for Windows installations enable `core.autocrlf`, which converts line endings on checkout and commit. CRLF in a working copy can cause problems for scripts intended to run on Linux.
 
-* Make sure you ran `git config --global core.autocrlf false`.
-* Configure your text editor (VS Code, Zed, CLion, Vim, etc.) to use **LF line endings** by default.
-* We include `.editorconfig` and `.gitattributes` in our repositories to enforce LF line endings automatically.
+* For repositories that preserve line endings without conversion, use `core.autocrlf false` at the appropriate configuration scope.
+* Configure your text editor (VS Code, Zed, CLion, Vim, etc.) to use **LF line endings** for Linux-oriented files.
+* This repository's `.editorconfig` requests LF from supporting editors. Its `.gitattributes` uses `* -text` to disable Git's text conversion; it does not enforce LF or repair existing CRLF files. Check the configuration of other repositories rather than assuming it is identical.
 
 ## GitHub Flow
 
-We follow GitHub Flow with branch protection rules on `main`.
+Prefer a focused branch and pull request for collaborative changes. The examples assume the shared repository is named `origin` locally and its main branch is `main`. Replace quoted placeholders such as `'<your-branch-name>'` with your own values.
+
+Start with `git status`. Commit your current work on the appropriate branch or safely set it aside before switching branches; do not discard changes just to follow an example.
 
 ### Create a branch
 
-If you are a member of our organization, do not fork the repository. Clone the repository directly and create a branch:
+If you have write access to the repository, you can create a branch in it. Otherwise, use a fork and follow [GitHub's fork workflow](https://docs.github.com/en/pull-requests/collaborating-with-pull-requests/working-with-forks); its remotes differ from these examples. Organization membership alone does not guarantee write access.
 
 ```sh
 # Ensure you are on main and up to date
 git checkout main
-git pull
+git pull --ff-only
 
 # Create and switch to your feature branch
-git checkout -b <branch-type>/<short-description>
+git checkout -b '<branch-type>/<short-description>'
 ```
 
-We use standard branch naming prefixes:
+`--ff-only` stops rather than creating a merge if your local `main` has diverged. If it fails, inspect the history and ask for help if needed; do not reset away local commits to make it succeed.
+
+Descriptive branch names help others understand the work. Possible prefixes include:
 
 * `feat/` for new RTL modules, drivers, or software features
 * `fix/` for bug fixes or resolving hardware timing violations
@@ -101,36 +108,45 @@ Always inspect your changes before committing:
 ```sh
 # Check what files have been modified or created
 git status
+git diff
 
 # Stage only the files you intend to commit
-git add <path-to-file>
+git add '<path-to-file>'
 
-# Review the staged changes
+# Review the contents selected for this commit
+git diff --cached
 git status
 
 # Commit with a clear, concise message
 git commit -m '<commit message>'
 ```
 
-Avoid using `git commit -a`, because it makes it too easy to accidentally stage temporary files, credentials, or massive test data.
+`git diff` does not show untracked files, so inspect new files as well. After staging, `git diff --cached` shows the selected content; `git status` shows which files are staged or still unstaged.
 
-Commit messages should be written in English and follow the [Conventional Commits](https://www.conventionalcommits.org/en) convention (for example: `feat(decoder): add lookup table module for distance 3 or docs(board): update serial console pinout`).
+Prefer explicit staging over `git commit -a`: `-a` stages modifications and deletions of all tracked files, which may include unrelated work, and it does not add new untracked files.
+
+Write commit messages in English using [Conventional Commits](https://www.conventionalcommits.org/en), for example `feat(decoder): Add lookup table for distance 3` or `docs(board): Clarify serial console setup`. Keep the subject short and imperative. Add a body only when it explains something useful beyond the subject.
 
 ### Create a pull request
 
 Keep pull requests as small and focused as possible. A PR that changes one module or adds one guide is much easier to review than a massive commit spanning half the semester.
 
-Before creating a pull request, ensure your branch is up to date with `main`:
+After committing your work, bring your branch up to date with `main`:
 
 ```sh
 git checkout main
-git pull
-git checkout <your-branch-name>
+git pull --ff-only
+git checkout '<your-branch-name>'
 git merge main
-git push
 ```
 
-Open a pull request on GitHub. Provide a brief explanation of what you changed, why, and how you verified it (such as simulation results, linting, or on-board tests).
+If there are conflicts, resolve them and review the result before continuing. Run the relevant checks, then push your branch:
+
+```sh
+git push -u origin '<your-branch-name>'
+```
+
+Open a pull request on GitHub. Keep the description brief: enough context for someone to understand the change, plus a related issue link if useful. For technical procedures, mention what you tested and any limitations. There is no rigid description template.
 
 ### Address review comments
 
@@ -142,30 +158,32 @@ Code reviews are collaborative check-ins, not tests.
 
 ### Merge your pull request
 
-Once review comments are resolved and automated checks pass, merge the pull request:
+Once the change is ready, address outstanding review concerns and check any validation results available for the repository. Do not assume every repository has automated checks or required approvals.
 
-* Generally, the author of the pull request should be the one to press the merge button.
-* We recommend Squash and merge for single features or documentation updates to keep the history on `main` clean and readable.
+* Generally, it is helpful for the author to merge, so they control when the change lands.
+* Choose a merge method agreed for the repository; this guide does not mandate one. If using squash merge, review the resulting commit message and keep it consistent with the commit convention.
 
 ### Delete your branch
 
-*After merging a pull request, always delete the merged branch*.
+After merging a pull request, delete its branch when it is no longer needed. Before deleting it on GitHub or locally, confirm that all intended changes reached `main` and that there is no later work or work someone else still needs on the branch.
 
-Leaving merged branches around clutters the repository and creates confusion about what is active and what is obsolete.
-
-Once you click the "Delete branch" button on GitHub, clean up your local machine:
+Cleaning up completed branches keeps it clear which work is active. Once you have confirmed this and deleted the remote branch on GitHub, clean up your local machine:
 
 ```sh
 git checkout main
-git pull
-git branch -d <your-branch-name>
+git pull --ff-only
 git remote prune origin
+git branch -d '<your-branch-name>'
 ```
+
+Prune first so a stale upstream tracking reference cannot satisfy `git branch -d`'s merged check in place of the updated `main`.
+
+After a squash merge, `git branch -d` may refuse because the original branch commits are not ancestors of `main`. This is a safety check. Confirm that the PR was merged, all intended changes reached `main`, and there is no later work on the branch before considering force deletion with `git branch -D`. If unsure, leave the branch in place and ask. Do not use force deletion as the default cleanup command.
 
 ## Shared practices
 
 ### Rebasing on shared branches is discouraged
 
-We strongly discourage rebasing branches that are shared or actively under review. Force-pushing can overwrite work done by others, confuse reviewers looking at review diffs, and erase cryptographic signatures.
+Avoid rebasing branches that are shared or actively under review unless you coordinate with the people involved. Rewriting commits can disrupt their work, confuse review history, and replace signed commits with new ones.
 
-Use standard `git merge main` to keep your branch up to date. Direct pushes and force-pushes to the `main` branch are strictly blocked by repository protection rules.
+The examples use `git merge main` to update a branch without rewriting its existing commits. Avoid force-pushing shared history. Check the repository's actual branch protections and rulesets; this guide does not claim that direct pushes or force-pushes are automatically blocked.

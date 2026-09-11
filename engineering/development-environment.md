@@ -1,14 +1,19 @@
 # Development environment
 
-This document assumes basic familiarity with Unix-like operating systems, Git, C++, Rust, and digital hardware concepts. If anything is unclear or seems broken, please just ask someone in the lab.
+This guide helps you identify what you need for a particular task. It is not a fixed toolchain for every project. Start with the project's README or the relevant board guide for tested versions and setup steps; if those details are missing, please ask before installing tools or changing the board.
+
+Depending on the task, you will need familiarity with the Linux command line, Git, digital hardware, or the programming language used by the project. You do not need every tool below just to read or edit documentation.
 
 ## Operating systems
 
-FPGA tooling and embedded systems compilers run best on Linux.
+Choose a host operating system supported by the exact tools you need. A Linux image running on the board does not determine which operating system every contributor must use.
 
-* **Ubuntu 22.04 LTS (x86_64)** is our standard baseline for host-side development. If you are configuring a development machine or a build server, please stick to Ubuntu 22.04 LTS to avoid toolchain version mismatches.
-* **Building Yocto from source** is not required for day-to-day work. The base OS image for the ZCU104 is built once and flashed to the board. You only need a full Yocto build environment on Ubuntu if you are modifying the kernel, device drivers, or recreating the system image from scratch.
-* **Windows users** can write RTL (Verilog) and application code on Windows, but be sure to read our guidelines below regarding line endings, and consider using WSL2 or remote SSH into the board for running Linux-side tests.
+* **Editing documentation or source code:** Use your preferred editor and follow the repository's formatting settings.
+* **Building a Yocto image:** Follow the guide for that Yocto/BSP release, including its supported host distribution, packages, memory, and disk requirements. The [Yocto build guide is being developed in PR #1](https://github.com/kmutt-quantum-zcu104/documents/pull/1); it is not yet a complete recovery procedure.
+* **Building PL designs:** Check the selected Vivado release's host requirements and the project's tested build procedure. Do not assume a newer tool version is interchangeable with the recorded one.
+* **Building applications:** Use the project's documented native or cross-compilation environment. With a compatible SDK, application development may not require rebuilding the whole board image.
+
+Windows, WSL2, containers, and remote hosts have different tool and device-access constraints. Use them where supported by the relevant procedure, rather than assuming they are interchangeable.
 
 ## Git
 
@@ -16,66 +21,52 @@ FPGA tooling and embedded systems compilers run best on Linux.
 
 ## EditorConfig
 
-We use [EditorConfig](https://editorconfig.org/) to enforce consistent indentation and line endings across different editors. Please make sure that your IDE or text editor supports it. If you use VS Code, be sure to install the EditorConfig extension.
+This repository includes an [EditorConfig](https://editorconfig.org/) file to request consistent indentation and line endings from supporting editors. Please make sure that your IDE or text editor supports it. If you use VS Code, be sure to install the EditorConfig extension.
 
 ## Vivado and EDA tooling
 
-For Programmable Logic (PL) development, we standardize on AMD/Xilinx Vivado:
+For projects using AMD Vivado, follow the project's recorded release, edition/license requirements, device support, and any board-file requirements. Keep hardware exports, bitstreams, and software/BSP inputs matched to the tested configuration.
 
-* Please install **Vivado ML Standard or Enterprise (version 2023.2 or later)**.
-* Make sure you install the **Zynq UltraScale+ device support** and download the board definition files for the **ZCU104 Evaluation Kit**.
-* Install the cable drivers using the official `install_drivers` script provided with Vivado so that your machine can communicate with the onboard JTAG/UART interface.
+If you need to program the board, follow the selected tool release's official cable-driver instructions. Identify the board's serial interface separately; do not assume the JTAG driver also provides the UART driver.
 
-Vivado generates large amounts of transient build artifacts, temporary caches, and log files. **Never commit generated Vivado project files or build logs into Git.** Always use our repository `.gitignore` and generate projects using Tcl scripts.
+Vivado generates caches, temporary files, and build outputs. Follow the implementation repository's `.gitignore` and build instructions, and review generated files before committing. Tcl-based project recreation can help reproducibility, but the project should document which sources and configuration must be retained; do not discard files merely because a tool generated them.
 
 ## Software toolchain (Processing System)
 
-The Processing System (PS) on the ZCU104 runs a 64-bit ARM Cortex-A53 quad-core processor. We support development in both C++ and Rust.
+For Linux applications running on the Cortex-A53 cores, the compiler, target architecture, libc, and libraries must be compatible with the installed image. The language and build tools depend on the project.
 
-### C++
+### Native builds on the board
 
-* We use modern C++ (C++17 or C++20).
-* For building software directly on the board, ensure `build-essential`, `g++`, and `cmake` are installed on the board's Linux environment.
-* If you cross-compile from an x86_64 host machine, install the aarch64 cross-toolchain:
-  * On Ubuntu: `sudo apt install g++-aarch64-linux-gnu gcc-aarch64-linux-gnu cmake`
+Build on the board only if its image includes or supports the required compiler, headers, libraries, and build tools. A Yocto image does not necessarily include a package manager or Debian packages such as `build-essential`. Record how development tools are provided by that image instead of applying host Ubuntu package commands to it.
 
-### Rust
+### Cross-compilation
 
-* Install Rust using [`rustup`](https://rustup.rs/):
-  ```sh
-  curl --proto '=https' --tlsv1.2 -sSf [https://sh.rustup.rs](https://sh.rustup.rs) | sh
-  ```
-* If you cross-compile for the ZCU104 from your host machine, add the 64-bit ARM Linux target:
-  ```sh
-  rustup target add aarch64-unknown-linux-gnu
-  ```
-  (Note: You will also need `aarch64-linux-gnu-gcc` installed on your host as the linker).
-* Alternatively, you can install `rustup` and `cargo` directly on the board's Linux to build natively.
+For a Yocto-based target, use an SDK built for the relevant image/configuration where available. Follow its environment-setup instructions so the build uses the intended compiler and target sysroot. Installing a generic AArch64 compiler on the host is not enough to establish compatibility with the image.
+
+The [Yocto SDK manual](https://docs.yoctoproject.org/sdk-manual/intro.html) explains the SDK model. Select the documentation version matching the Yocto release in use. Kernel modules also need the matching kernel build configuration and development artifacts; an application SDK alone may not provide them.
+
+### Language-specific requirements
+
+* **C / C++:** Follow the project's compiler, language-standard, library, and build-system requirements. Use its documented SDK integration for cross-builds.
+* **Rust:** If the project uses Rust, follow the [official installation instructions](https://www.rust-lang.org/tools/install) and any pinned toolchain. For cross-builds, use the project's tested target, linker, and sysroot configuration. Adding a target with `rustup` does not configure all of these. Native installation on the board also depends on the image supporting the toolchain.
 
 ## Code formatting
 
-To keep formatting consistent across all repositories:
+Follow the formatter configuration and version recorded in the repository you are editing. Common tools include `clang-format` for C/C++ and `rustfmt` through `cargo fmt` for Rust. These are not required for projects that do not use those languages.
 
-* **C / C++**: Format with `clang-format` (`clang-format -i <file>`).
-* **Rust**: Format with `rustfmt` (`cargo fmt`).
+Avoid mixing unrelated formatting changes into a functional change.
 
 ## Terminal and serial communication
 
-We communicate with the ZCU104 board via USB-UART and network shells:
+Serial-terminal options include Tera Term or PuTTY on Windows, and `picocom` or `minicom` on Linux. Use the device/COM port, baud rate, and other console settings confirmed for the board setup. Device names can change when cables or hosts change.
 
-* **Serial terminal**:
-  * On Windows, we recommend **Tera Term** (or PuTTY). Connect to the Silicon Labs / FTDI Serial COM port at **115200 baud (8-N-1)**.
-  * On Linux, use `picocom` (`picocom -b 115200 /dev/ttyUSB0`) or `minicom`.
-* **Remote shell**: For everyday remote development, deploying bitstreams, and streaming data, we connect via **SSH** and **SCP** over the local lab network or Tailscale.
+Consult the [ZCU104 Evaluation Board User Guide (UG1267)](https://docs.amd.com/r/en-US/ug1267-zcu104-eval-bd) for the board's interfaces and connections. The setup procedure should identify the actual console interface and any required host driver.
 
 ## Network and remote access
 
-The ZCU104 board is connected to the university internal network.
+The shared-board access procedure is still to be documented. Confirm permission, availability, and the current connection method with the other board users before connecting or changing anything. Do not assume that campus Wi-Fi, a VPN, or Tailscale provides access, or that the image has an SSH server enabled.
 
-* **On-campus**: If your workstation or laptop is connected directly to the university network (such as eduroam or lab Ethernet), you can access the board directly via SSH using its assigned local IP address or hostname.
-* **Off-campus (KMUTT VPN)**: If you are working outside the university campus (e.g., from home), you must connect to the university VPN before attempting to SSH into the board:
-  * For Windows 11 setup instructions, refer to the official [KMUTT VPN Configuration Guide (Windows 11, PDF in Thai)](https://cc.kmutt.ac.th/Files/VPN/VPN_Manual_update202510/Windows%2011/%E0%B8%84%E0%B8%B9%E0%B9%88%E0%B8%A1%E0%B8%B7%E0%B8%AD%E0%B8%81%E0%B8%B2%E0%B8%A3%E0%B8%95%E0%B8%B1%E0%B9%89%E0%B8%87%E0%B8%84%E0%B9%88%E0%B8%B2%20VPN%20Windows%2011.pdf).
-  * General VPN service details and credentials are managed through the [KMUTT Computer Center](https://cc.kmutt.ac.th/).
+Keep deployment-specific access details in internal documentation and credentials outside Git. This guide does not define scheduling or hardware safety policy.
 
 ## Other requirements
 
